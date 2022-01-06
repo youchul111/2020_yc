@@ -1,4 +1,4 @@
-# 2020 (Save all my codes when I learn)
+# yolov3_2020_yolov4
 
 ob : If the content does not exist in the names file by detecting the object using the coco.names rule, the object cannot be detected /
 Conclusion: You have to find a way to create the names yourself! But I don't think it's easy to make (as a result of googling) 
