@@ -1,0 +1,132 @@
+import numpy as np
+import cv2 as cv2
+import os
+import time
+
+%matplotlib inline 
+import matplotlib as mpl 
+import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
+mpl.rc('axes', labelsize=14)
+mpl.rc('xtick', labelsize=12)
+mpl.rc('ytick', labelsize=12)
+
+#Routine to fix colors in image
+def fixColor(image):
+    return(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+
+labelsFile="coco-labels-paper.txt"
+LABELS = open(labelsFile).read().strip().split("\n")
+print ("No. of supported classes", len(LABELS))
+
+np.random.seed(42)
+COLORS = np.random.randint(0, 255, size=(len(LABELS), 3),
+	dtype="uint8")
+
+weights="yolov4.weights"
+config="yolov4.cfg"
+net = cv2.dnn.readNetFromDarknet(config, weights)
+
+#Take a look at names of all layers in the model
+ln = net.getLayerNames()
+print (len(ln), ln )
+
+net.getUnconnectedOutLayers()
+
+# determine only the *output* layer names that we need from YOLO
+
+ln = [ln[i[0] - 1] for i in net.getUnconnectedOutLayers()]
+print (ln)
+
+img=cv2.imread("ladyonbike.jpg")
+img=cv2.resize(img, (608, 608)) 
+plt.imshow(fixColor(img))
+print (img.shape)
+(H, W) = img.shape[:2]
+
+blob = cv2.dnn.blobFromImage(img, 1 / 255.0, (608, 608), swapRB=True, crop=False)
+print ("Shape of blob", blob.shape)
+
+plt.imshow(fixColor(blob[0, 0, :, :]))
+
+split_blob=np.hstack([ blob[0, 0, :, :],blob[0, 1, :, :], blob[0, 2, :, :],])
+plt.imshow(fixColor(split_blob))
+
+net.setInput(blob)
+
+t0 = time.time()
+layerOutputs = net.forward(ln)
+t = time.time()
+print('time=', t-t0)
+(np.array(layerOutputs)).shape
+
+print (len(layerOutputs))
+
+print (len(layerOutputs[0]))
+
+print (len(layerOutputs[0] [0]))
+
+print (layerOutputs[0] [0])
+
+boxes = []
+confidences = []
+classIDs = []
+
+for output in layerOutputs:
+    print ("Shape of each output", output.shape)
+    # loop over each of the detections
+    for detection in output:
+        # extract the class ID and confidence (i.e., probability)
+        # of the current object detection
+        scores = detection[5:]
+        classID = np.argmax(scores)
+        confidence = scores[classID]
+
+        # filter out weak predictions by ensuring the detected
+        # probability is greater than the minimum probability
+        if confidence > 0.3:
+            # scale the bounding box coordinates back relative to
+            # the size of the image, keeping in mind that YOLO
+            # actually returns the center (x, y)-coordinates of
+            # the bounding box followed by the boxes' width and
+            # height
+            box = detection[0:4] * np.array([W, H, W, H])
+            (centerX, centerY, width, height) = box.astype("int")
+
+            # use the center (x, y)-coordinates to derive the top
+            # and and left corner of the bounding box
+            x = int(centerX - (width / 2))
+            y = int(centerY - (height / 2))
+
+            # update our list of bounding box coordinates,
+            # confidences, and class IDs
+            boxes.append([x, y, int(width), int(height)])
+            confidences.append(float(confidence))
+            classIDs.append(classID)
+            print (LABELS[classID], detection[4], confidence)
+            
+print (len(boxes))
+
+# apply non-maxima suppression to suppress weak, overlapping 
+# bounding boxes
+idxs = cv2.dnn.NMSBoxes(boxes, confidences, 0.5, 0.3)
+print (len(idxs))
+
+# ensure at least one detection exists
+if len(idxs) > 0:
+	# loop over the indexes we are keeping
+	for i in idxs.flatten():
+		# extract the bounding box coordinates
+		(x, y) = (boxes[i][0], boxes[i][1])
+		(w, h) = (boxes[i][2], boxes[i][3])
+
+		# draw a bounding box rectangle and label on the frame
+		color = [int(c) for c in COLORS[classIDs[i]]]
+		cv2.rectangle(img, (x, y), (x + w, y + h), color, 2)
+		text = "{}: {:.4f}".format(LABELS[classIDs[i]],
+			confidences[i])
+		cv2.putText(img, text, (x, y - 5),
+			cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+        
+plt.imshow(fixColor(img))
+cv2.imwrite("ladyonbike2.jpg_yolo_detected.png", img)
